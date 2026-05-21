@@ -157,8 +157,12 @@ async function load() {
 }
 
 async function loadAgents() {
-  const res = await api.agents.list()
-  agentOptions.value = res.agents.map(r => r.agent)
+  try {
+    const res = await api.agents.list()
+    agentOptions.value = res.agents.map(({ metrics, ...agent }) => agent)
+  } catch (e) {
+    console.warn('Failed to load agents for filter:', e.message)
+  }
 }
 
 onMounted(async () => { await loadAgents(); await load() })

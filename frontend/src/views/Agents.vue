@@ -53,7 +53,7 @@
 
     <!-- Create modal -->
     <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate = false">
-      <div class="modal card">
+      <div class="modal card" style="max-height:90vh;overflow-y:auto">
         <div class="modal-header">
           <h2>New agent</h2>
           <button class="btn btn-ghost" style="padding:4px 8px" @click="showCreate = false">✕</button>
@@ -68,8 +68,27 @@
         </div>
         <div class="form-field">
           <label>Script / Goal</label>
-          <textarea v-model="form.script" placeholder="Paste the agent's goal or prompt script…" class="input" rows="6" />
+          <textarea v-model="form.script" placeholder="Paste the agent's goal or prompt script…" class="input" rows="4" />
         </div>
+
+        <!-- KPI section -->
+        <div class="kpi-section">
+          <div class="kpi-section-header">
+            <label>KPIs</label>
+            <button class="btn btn-ghost" style="padding:2px 8px;font-size:11px" @click="addKpiRow">+ Add KPI</button>
+          </div>
+          <div v-if="!form.kpis.length" class="kpi-empty">No KPIs added yet. Add KPIs to define evaluation criteria.</div>
+          <div v-for="(kpi, idx) in form.kpis" :key="idx" class="kpi-row-form">
+            <div class="kpi-row-top">
+              <input v-model="kpi.key" placeholder="e.g. greeting_quality" class="input kpi-input" />
+              <input v-model="kpi.label" placeholder="Label" class="input kpi-input" />
+              <input v-model.number="kpi.weight" type="number" min="0.1" max="5" step="0.1" class="input kpi-weight" placeholder="Wt" />
+              <button class="icon-btn" @click="form.kpis.splice(idx, 1)" title="Remove">✕</button>
+            </div>
+            <textarea v-model="kpi.description" placeholder="What must the agent do to pass?" class="input kpi-desc" rows="2" />
+          </div>
+        </div>
+
         <div class="modal-footer">
           <button class="btn btn-ghost" @click="showCreate = false">Cancel</button>
           <button class="btn btn-primary" @click="createAgent" :disabled="!form.name || creating">
@@ -95,7 +114,11 @@ const agents = ref([])
 const { loading, run } = useAsync()
 const showCreate = ref(false)
 const creating = ref(false)
-const form = reactive({ name: '', description: '', script: '' })
+const form = reactive({ name: '', description: '', script: '', kpis: [] })
+
+function addKpiRow() {
+  form.kpis.push({ key: '', label: '', description: '', weight: 1.0 })
+}
 
 async function load() {
   await run(async () => {
@@ -111,8 +134,17 @@ async function createAgent() {
   if (!form.name) return
   creating.value = true
   try {
-    const res = await api.agents.create({ ...form })
-    router.push(`/agents/${res.agent.id}`)
+    const { kpis: kpiList, ...agentData } = form
+    const res = await api.agents.create(agentData)
+    const agentId = res.agent.id
+
+    // Create each KPI for the new agent
+    const validKpis = kpiList.filter(k => k.key && k.label && k.description)
+    for (const kpi of validKpis) {
+      await api.agents.kpis.create(agentId, kpi)
+    }
+
+    router.push(`/agents/${agentId}`)
   } finally {
     creating.value = false
   }
@@ -158,4 +190,21 @@ async function createAgent() {
 .loading-grid { display: flex; flex-direction: column; gap: 10px; }
 .skeleton-card { height: 72px; border-radius: var(--radius-lg); background: var(--bg-1); animation: shimmer 1.4s infinite; background-size: 200%; background-image: linear-gradient(90deg, var(--bg-1) 25%, var(--bg-2) 50%, var(--bg-1) 75%); }
 @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+/* KPI section in create modal */
+.kpi-section { display: flex; flex-direction: column; gap: 10px; }
+.kpi-section-header { display: flex; justify-content: space-between; align-items: center; }
+.kpi-section-header label { font-size: 12px; color: var(--text-2); font-weight: 600; }
+.kpi-empty { font-size: 12px; color: var(--text-3); padding: 12px; background: var(--bg-2); border-radius: var(--radius); text-align: center; }
+.kpi-row-form {
+  padding: 10px; border-radius: var(--radius);
+  background: var(--bg-2); border: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.kpi-row-top { display: flex; gap: 6px; align-items: center; }
+.kpi-input { flex: 1; font-size: 12px !important; padding: 6px 8px !important; }
+.kpi-weight { width: 56px; flex: none; font-size: 12px !important; padding: 6px 8px !important; }
+.kpi-desc { font-size: 12px !important; padding: 6px 8px !important; }
+.icon-btn { background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 12px; padding: 2px 4px; }
+.icon-btn:hover { color: var(--danger); }
 </style>
